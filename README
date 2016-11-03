@@ -1,0 +1,19 @@
+Description:
+
+ ECHO server based on libev.
+ Accept new connection, receive data and send it back
+ to connected client.
+
+How to run:
+
+make & ./echo_srv [port_number], where port_number port which server
+will listen for a new connections. Default port number - 1025.
+For a stop execution, just press: <Ctrl+C> keys combination.
+
+Required libev for compilation and work.
+
+Author:
+    Andrey Andruschenko <apofiget@gmail.com>
+
+License:
+    Public domain
