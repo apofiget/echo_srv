@@ -144,24 +144,46 @@ int send_data(int fd, buffer_t *pkt) {
   \param w - pointer to ev_io(watcher for current FD)
   \param revents - eventmask
 */
-void on_read(struct ev_loop *loop, ev_io *w, __attribute__((unused)) int revents) {
+void on_read(struct ev_loop *loop, ev_io *w, int revents) {
     int rc, fd = w->fd;
     buffer_t *buf = (buffer_t *)w->data;
 
-    rc = read_data(fd, buf);
+    if (revents & EV_READ && buf->offset < (int)buf->buf_len) {
+        rc = read_data(fd, buf);
 
-    if (rc >= 0) {
-        fprintf(stderr, "[%d] RECEIVED: %.*s\n", fd, buf->rcv, buf->buffer);
-        rc = send_data(fd, buf);
+        if (rc >= 0) {
+            fprintf(stderr, "[%d] RECEIVED: %.*s\n", fd, buf->rcv, buf->buffer);
+            rc = send_data(fd, buf);
+
+            if (rc == 0) ev_io_set(w, fd, EV_WRITE | EV_READ);
+        }
+
+        if (rc < 0) {
+            fprintf(stderr, "[%d] Connection closed!\n", fd);
+            ev_io_stop(loop, w);
+            close(fd);
+            free(w);
+            free(buf->buffer);
+            free(buf);
+            return;
+        }
     }
 
-    if (rc < 0) {
-        fprintf(stderr, "[%d] Connection closed!\n", fd);
-        ev_io_stop(loop, w);
-        close(fd);
-        free(w);
-        free(buf->buffer);
-        free(buf);
+    if (revents & EV_WRITE && buf->rcv > 0) {
+        rc = send_data(fd, buf);
+
+        if (rc == 1)
+            ev_io_set(w, fd, EV_READ);
+
+        if (rc < 0) {
+            fprintf(stderr, "[%d] Connection closed!\n", fd);
+            ev_io_stop(loop, w);
+            close(fd);
+            free(w);
+            free(buf->buffer);
+            free(buf);
+            return;
+        }
     }
 }
 
