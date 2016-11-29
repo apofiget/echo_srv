@@ -148,6 +148,12 @@ void on_read(struct ev_loop *loop, ev_io *w, int revents) {
     int rc, fd = w->fd;
     buffer_t *buf = (buffer_t *)w->data;
 
+    if (revents & EV_ERROR) {
+        fprintf(stderr, "[%d] Internal error.\n", fd);
+        release_connect(fd, loop, w);
+        return;
+    }
+
     if (revents & EV_READ && buf->offset < (int)buf->buf_len) {
         rc = read_data(fd, buf);
 
@@ -159,12 +165,7 @@ void on_read(struct ev_loop *loop, ev_io *w, int revents) {
         }
 
         if (rc < 0) {
-            fprintf(stderr, "[%d] Connection closed!\n", fd);
-            ev_io_stop(loop, w);
-            close(fd);
-            free(w);
-            free(buf->buffer);
-            free(buf);
+            release_connect(fd, loop, w);
             return;
         }
     }
@@ -172,19 +173,30 @@ void on_read(struct ev_loop *loop, ev_io *w, int revents) {
     if (revents & EV_WRITE && buf->rcv > 0) {
         rc = send_data(fd, buf);
 
-        if (rc == 1)
-            ev_io_set(w, fd, EV_READ);
+        if (rc == 1) ev_io_set(w, fd, EV_READ);
 
         if (rc < 0) {
-            fprintf(stderr, "[%d] Connection closed!\n", fd);
-            ev_io_stop(loop, w);
-            close(fd);
-            free(w);
-            free(buf->buffer);
-            free(buf);
+            release_connect(fd, loop, w);
             return;
         }
     }
+}
+
+/*!
+  Close connection and release memory
+  \param fd - connection FD
+  \param ev_loop - pointer to struct ev_loop
+  \param io - pointer to ev_io
+*/
+void release_connect(int fd, struct ev_loop *loop, ev_io *io) {
+    buffer_t *buf = (buffer_t *)io->data;
+
+    fprintf(stderr, "[%d] Connection closed!\n", fd);
+    ev_io_stop(loop, io);
+    close(fd);
+    free(io);
+    free(buf->buffer);
+    free(buf);
 }
 
 /*!
@@ -194,7 +206,7 @@ void on_read(struct ev_loop *loop, ev_io *w, int revents) {
   \param revents - eventmask
 */
 void accept_connect(struct ev_loop *loop, ev_io *w, __attribute__((unused)) int revents) {
-    struct ev_io *io = NULL;
+    ev_io *io = NULL;
     struct sockaddr_in sa;
     socklen_t sa_len = sizeof(sa);
     int fd;
